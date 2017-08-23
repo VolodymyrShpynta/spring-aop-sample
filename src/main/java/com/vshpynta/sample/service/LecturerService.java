@@ -2,6 +2,7 @@ package com.vshpynta.sample.service;
 
 import com.vshpynta.sample.model.Lecturer;
 import com.vshpynta.sample.model.annotations.TestAnnotation;
+import com.vshpynta.sample.model.annotations.ValidatedBy;
 import org.springframework.stereotype.Service;
 
 /**
@@ -11,7 +12,7 @@ import org.springframework.stereotype.Service;
 public class LecturerService {
 
     @TestAnnotation
-    public Lecturer save(Lecturer lecturer) {
+    public Lecturer save(@ValidatedBy("someValidatorBean") Lecturer lecturer) {
         System.out.println(("Saving lecturer: " + lecturer));
         return lecturer;
     }
