@@ -1,11 +1,15 @@
 package com.vshpynta.sample.aspect;
 
 import com.vshpynta.sample.model.Lecturer;
-import com.vshpynta.sample.model.annotations.ValidatedBy;
+import com.vshpynta.sample.model.annotations.Validate;
+import com.vshpynta.sample.validation.EntityValidator;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.stereotype.Component;
 
 import java.lang.annotation.Annotation;
@@ -18,7 +22,20 @@ import java.util.Map;
  */
 @Component
 @Aspect
-public class CustomValidator {
+public class ValidateAnnotationProcessor implements BeanFactoryPostProcessor {
+
+    private Map<String, String> validatorsClassNameMap = new HashMap<>();
+
+    private ConfigurableListableBeanFactory beanFactory;
+
+    @Override
+    public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
+        this.beanFactory = beanFactory;
+        for (String beanName : beanFactory.getBeanNamesForType(EntityValidator.class)) {
+            validatorsClassNameMap.put(beanFactory.getBean(beanName).getClass().getName(),
+                    beanName);
+        }
+    }
 
     @Before("@annotation(com.vshpynta.sample.model.annotations.TestAnnotation)")
     public void withinAnnotationPointcut(JoinPoint joinPoint) {
@@ -30,11 +47,17 @@ public class CustomValidator {
                 .ifPresent(lecturer -> System.out.println(lecturer.getFirstName()));
     }
 
-    @Before("execution(* *(.., @com.vshpynta.sample.model.annotations.ValidatedBy (*), ..))")
+    @Before("execution(* *(.., @com.vshpynta.sample.model.annotations.Validate (*), ..))")
     public void beforeAnnotatedParameter(JoinPoint joinPoint) throws NoSuchMethodException {
         System.out.println("...Running custom validator for parameters...");
-        final Map<Integer, ValidatedBy> annotations = getPositionAnnotationMap(joinPoint, ValidatedBy.class);
-        System.out.println(annotations);
+        final Map<Integer, Validate> annotations = getPositionAnnotationMap(joinPoint, Validate.class);
+        for (Map.Entry<Integer, Validate> entry : annotations.entrySet()) {
+            for (Class<? extends EntityValidator> validatorClass : entry.getValue().value()) {
+                final String beanName = validatorsClassNameMap.get(validatorClass.getName());
+                beanFactory.getBean(beanName, EntityValidator.class)
+                        .validate(joinPoint.getArgs()[entry.getKey()]);
+            }
+        }
     }
 
     private <T extends Annotation> Map<Integer, T> getPositionAnnotationMap(JoinPoint joinPoint, Class<T> annotationClass) throws NoSuchMethodException {

@@ -1,5 +1,8 @@
 package com.vshpynta.sample.model.annotations;
 
+import com.vshpynta.sample.validation.BaseEntityValidator;
+import com.vshpynta.sample.validation.EntityValidator;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -10,7 +13,7 @@ import java.lang.annotation.Target;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.PARAMETER})
-public @interface ValidatedBy {
+public @interface Validate {
 
-    String[] value() default {};
+    Class<? extends EntityValidator>[] value() default {BaseEntityValidator.class};
 }
