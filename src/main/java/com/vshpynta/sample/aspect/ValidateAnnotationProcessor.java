@@ -32,7 +32,7 @@ public class ValidateAnnotationProcessor implements BeanFactoryPostProcessor {
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
         this.beanFactory = beanFactory;
         for (String beanName : beanFactory.getBeanNamesForType(EntityValidator.class)) {
-            validatorsClassNameMap.put(beanFactory.getBean(beanName).getClass().getName(),
+            validatorsClassNameMap.put(beanFactory.getBeanDefinition(beanName).getBeanClassName(),
                     beanName);
         }
     }
