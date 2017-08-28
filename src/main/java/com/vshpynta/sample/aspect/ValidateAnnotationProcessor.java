@@ -11,11 +11,17 @@ import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
+
+import static com.vshpynta.sample.utils.PredicateUtils.not;
+import static java.util.stream.Collectors.toList;
 
 /**
  * Created by vshpynta on 22/08/2017.
@@ -24,7 +30,7 @@ import java.util.Map;
 @Aspect
 public class ValidateAnnotationProcessor implements BeanFactoryPostProcessor {
 
-    private Map<String, String> validatorsClassNameMap = new HashMap<>();
+    private Map<String, String> validatorClassBeanNameMap = new HashMap<>();
 
     private ConfigurableListableBeanFactory beanFactory;
 
@@ -32,7 +38,7 @@ public class ValidateAnnotationProcessor implements BeanFactoryPostProcessor {
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
         this.beanFactory = beanFactory;
         for (String beanName : beanFactory.getBeanNamesForType(EntityValidator.class)) {
-            validatorsClassNameMap.put(beanFactory.getBeanDefinition(beanName).getBeanClassName(),
+            validatorClassBeanNameMap.put(beanFactory.getBeanDefinition(beanName).getBeanClassName(),
                     beanName);
         }
     }
@@ -48,33 +54,38 @@ public class ValidateAnnotationProcessor implements BeanFactoryPostProcessor {
     }
 
     @Before("execution(* *(.., @com.vshpynta.sample.model.annotations.Validate (*), ..))")
-    public void beforeAnnotatedParameter(JoinPoint joinPoint) throws NoSuchMethodException {
-        System.out.println("...Running custom validator for parameters...");
-        final Map<Integer, Validate> annotations = getPositionAnnotationMap(joinPoint, Validate.class);
-        for (Map.Entry<Integer, Validate> entry : annotations.entrySet()) {
-            for (Class<? extends EntityValidator> validatorClass : entry.getValue().value()) {
-                final String beanName = validatorsClassNameMap.get(validatorClass.getName());
-                beanFactory.getBean(beanName, EntityValidator.class)
-                        .validate(joinPoint.getArgs()[entry.getKey()]);
-            }
-        }
+    public void validateAnnotatedArguments(JoinPoint joinPoint) throws NoSuchMethodException {
+        System.out.println("...Start validation annotated arguments...");
+        final Annotation[][] allArgsAnnotations = getAllParametersAnnotations(joinPoint);
+        IntStream.iterate(0, argPosition -> argPosition++).limit(allArgsAnnotations.length)
+                .forEach(argPosition ->
+                        validateArgument(joinPoint.getArgs()[argPosition],
+                                getValidationAnnotations(allArgsAnnotations[argPosition])));
     }
 
-    private <T extends Annotation> Map<Integer, T> getPositionAnnotationMap(JoinPoint joinPoint, Class<T> annotationClass) throws NoSuchMethodException {
-        final Annotation[][] parametersAnnotations = getParametersAnnotations(joinPoint);
-        Map<Integer, T> annotations = new HashMap<>();
-        for (int i = 0; i < parametersAnnotations.length; i++) {
-            for (int j = 0; j < parametersAnnotations[i].length; j++) {
-                final Annotation annotation = parametersAnnotations[i][j];
-                if (annotationClass.isAssignableFrom(annotation.annotationType())) {
-                    annotations.put(i, annotationClass.cast(annotation));
-                }
-            }
-        }
-        return annotations;
+    private void validateArgument(Object argument, List<Validate> validationAnnotations) {
+        getValidators(validationAnnotations)
+                .forEach(validator -> validator.validate(argument));
     }
 
-    private Annotation[][] getParametersAnnotations(JoinPoint methodJoinPoint) throws NoSuchMethodException {
+    private List<EntityValidator> getValidators(List<Validate> validationAnnotations) {
+        return validationAnnotations.stream()
+                .flatMap(annotation -> Arrays.stream(annotation.value()))
+                .map(Class::getName)
+                .map(validatorClassBeanNameMap::get)
+                .filter(not(StringUtils::isEmpty))
+                .map(beanName -> beanFactory.getBean(beanName, EntityValidator.class))
+                .collect(toList());
+    }
+
+    private List<Validate> getValidationAnnotations(Annotation[] annotations) {
+        return Arrays.stream(annotations)
+                .filter(annotation -> Validate.class.isAssignableFrom(annotation.annotationType()))
+                .map(Validate.class::cast)
+                .collect(toList());
+    }
+
+    private Annotation[][] getAllParametersAnnotations(JoinPoint methodJoinPoint) throws NoSuchMethodException {
         MethodSignature signature = (MethodSignature) methodJoinPoint.getSignature();
         String methodName = signature.getMethod().getName();
         Class<?>[] parameterTypes = signature.getMethod().getParameterTypes();
